@@ -92,6 +92,13 @@ function introKeyboard(botUsername){
   ]};
 }
 
+function pricingKeyboard(botUsername){
+  return {inline_keyboard:[[
+    {text:'🧮 Оценить проект',url:`https://t.me/${botUsername}?start=quiz`},
+    {text:'💬 Написать',url:links.write},
+  ]]};
+}
+
 function greeting(){
   return 'Привет. Сайты, боты, запись и автоматизация — коротко по делу.\nВыбери, куда дальше:';
 }
@@ -132,16 +139,16 @@ function loadNavigator(){
   return readFileSync(join(ROOT,'posts','navigator.md'),'utf8').trim();
 }
 
-function loadIntroCaption(){
-  const caption=readFileSync(join(ROOT,'posts','intro.md'),'utf8').trim();
+function loadCaption(name){
+  const caption=readFileSync(join(ROOT,'posts',`${name}.md`),'utf8').trim();
   if(caption.length>CAPTION_LIMIT){
-    throw Object.assign(Error(`intro caption ${caption.length} > ${CAPTION_LIMIT}`),{code:'CAPTION_TOO_LONG'});
+    throw Object.assign(Error(`${name} caption ${caption.length} > ${CAPTION_LIMIT}`),{code:'CAPTION_TOO_LONG'});
   }
   return caption;
 }
 
-function loadIntroPhoto(){
-  return readFileSync(join(ROOT,'assets','intro.png'));
+function loadPhoto(name){
+  return readFileSync(join(ROOT,'assets',`${name}.png`));
 }
 
 export function createBot({token,adminId,channelId}){
@@ -247,27 +254,24 @@ export function createBot({token,adminId,channelId}){
     await send(chatId,'Пост ушёл в канал.',{inline_keyboard:[]});
   }
 
-  async function sendIntroPhoto(targetChatId){
-    const username=await ensureUsername();
-    const caption=loadIntroCaption();
-    const photo=loadIntroPhoto();
+  async function sendNamedPhoto(targetChatId,name,keyboard){
     const form=new FormData();
     form.append('chat_id',String(targetChatId));
-    form.append('caption',caption);
+    form.append('caption',loadCaption(name));
     form.append('parse_mode','HTML');
-    form.append('reply_markup',JSON.stringify(introKeyboard(username)));
-    form.append('photo',new Blob([photo],{type:'image/png'}),'intro.png');
+    form.append('reply_markup',JSON.stringify(keyboard));
+    form.append('photo',new Blob([loadPhoto(name)],{type:'image/png'}),`${name}.png`);
     return telegramForm(token,'sendPhoto',form);
   }
 
-  async function publishIntro(chatId,preview){
+  async function publishPhotoPost(chatId,{name,preview,keyboard,label}){
     const target=preview?adminId:channelId;
-    await sendIntroPhoto(target);
+    await sendNamedPhoto(target,name,keyboard);
     if(preview){
-      await send(chatId,'Превью intro ушло тебе в личку. В канал — /intro без аргументов.',{inline_keyboard:[]});
+      await send(chatId,`Превью ${label} ушло тебе в личку. В канал — /${name==='intro'?'intro':'post2'} без аргументов.`,{inline_keyboard:[]});
       return;
     }
-    await send(chatId,'Intro ушёл в канал.',{inline_keyboard:[]});
+    await send(chatId,`${label} ушёл в канал.`,{inline_keyboard:[]});
   }
 
   async function handle(update){
@@ -326,17 +330,32 @@ export function createBot({token,adminId,channelId}){
       return;
     }
 
-    if(cmd==='/intro'){
+    if(cmd==='/intro'||cmd==='/post2'){
       if(user.id!==adminId){
         await send(incoming.chat.id,'Эта команда только для админа.',{inline_keyboard:[]});
         return;
       }
       const preview=payload.toLowerCase()==='preview';
       if(payload&&!preview){
-        await send(incoming.chat.id,'Использование: /intro preview или /intro',{inline_keyboard:[]});
+        await send(incoming.chat.id,`Использование: ${cmd} preview или ${cmd}`,{inline_keyboard:[]});
         return;
       }
-      await publishIntro(incoming.chat.id,preview);
+      const username=await ensureUsername();
+      if(cmd==='/intro'){
+        await publishPhotoPost(incoming.chat.id,{
+          name:'intro',
+          preview,
+          keyboard:introKeyboard(username),
+          label:'Intro',
+        });
+        return;
+      }
+      await publishPhotoPost(incoming.chat.id,{
+        name:'pricing',
+        preview,
+        keyboard:pricingKeyboard(username),
+        label:'Пост про цены',
+      });
       return;
     }
   }
@@ -348,6 +367,7 @@ export function createBot({token,adminId,channelId}){
       {command:'start',description:'Меню и оценка проекта'},
       {command:'post',description:'Пост-проводник в канал (админ)'},
       {command:'intro',description:'Первый пост с картинкой (админ)'},
+      {command:'post2',description:'Пост про цены (админ)'},
     ]});
     return me;
   }

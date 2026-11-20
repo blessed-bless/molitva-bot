@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" fill="none">
+  <defs>
+    <style type="text/css"><![CDATA[
+      @font-face {
+        font-family: 'Unbounded';
+        src: url('fonts/Unbounded-Bold.ttf') format('truetype');
+        font-weight: 700;
+        font-style: normal;
+      }
+      @font-face {
+        font-family: 'Onest';
+        src: url('fonts/Onest-Bold.ttf') format('truetype');
+        font-weight: 700;
+        font-style: normal;
+      }
+    ]]></style>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#A78BFA" stroke-width="1" opacity="0.12"/>
+    </pattern>
+  </defs>
+
+  <rect width="1280" height="720" fill="#0D0B12"/>
+  <rect width="1280" height="720" fill="url(#grid)"/>
+
+  <rect x="36" y="36" width="1208" height="648" fill="none" stroke="#2A2438" stroke-width="1.5"/>
+  <rect x="36" y="36" width="18" height="18" fill="#8B5CF6"/>
+  <rect x="1226" y="666" width="18" height="18" fill="#8B5CF6"/>
+
+  <!-- corner accents like intro -->
+  <path d="M1080 36 H1244 V120" fill="none" stroke="#A78BFA" stroke-width="1.5" opacity="0.55"/>
+  <path d="M36 600 V684 H200" fill="none" stroke="#A78BFA" stroke-width="1.5" opacity="0.55"/>
+
+  <rect x="72" y="168" width="6" height="88" fill="#8B5CF6"/>
+  <text x="96" y="210" fill="#F3F1EA" font-family="Unbounded, sans-serif" font-size="72" font-weight="700" letter-spacing="-0.045em">Сколько стоит?</text>
+  <text x="96" y="258" fill="#A78BFA" font-family="Onest, sans-serif" font-size="22" font-weight="700">Ориентиры для сайта, бота, записи и автоматизации</text>
+
+  <!-- four price cards -->
+  <g font-family="Onest, sans-serif" font-weight="700">
+    <rect x="96" y="320" width="520" height="100" rx="10" fill="#16131C" stroke="#2A2438" stroke-width="1.5"/>
+    <rect x="96" y="320" width="6" height="100" rx="0" fill="#8B5CF6"/>
+    <text x="128" y="362" fill="#A78BFA" font-size="18">Сайт</text>
+    <text x="128" y="398" fill="#F3F1EA" font-family="Unbounded, sans-serif" font-size="32">от 30 000 ₽</text>
+
+    <rect x="664" y="320" width="520" height="100" rx="10" fill="#16131C" stroke="#2A2438" stroke-width="1.5"/>
+    <rect x="664" y="320" width="6" height="100" fill="#8B5CF6"/>
+    <text x="696" y="362" fill="#A78BFA" font-size="18">Telegram-бот</text>
+    <text x="696" y="398" fill="#F3F1EA" font-family="Unbounded, sans-serif" font-size="32">от 25 000 ₽</text>
+
+    <rect x="96" y="448" width="520" height="100" rx="10" fill="#16131C" stroke="#2A2438" stroke-width="1.5"/>
+    <rect x="96" y="448" width="6" height="100" fill="#8B5CF6"/>
+    <text x="128" y="490" fill="#A78BFA" font-size="18">Онлайн-запись</text>
+    <text x="128" y="526" fill="#F3F1EA" font-family="Unbounded, sans-serif" font-size="32">от 50 000 ₽</text>
+
+    <rect x="664" y="448" width="520" height="100" rx="10" fill="#16131C" stroke="#2A2438" stroke-width="1.5"/>
+    <rect x="664" y="448" width="6" height="100" fill="#8B5CF6"/>
+    <text x="696" y="490" fill="#A78BFA" font-size="18">Автоматизация</text>
+    <text x="696" y="526" fill="#F3F1EA" font-family="Unbounded, sans-serif" font-size="32">от 20 000 ₽</text>
+  </g>
+
+  <text x="96" y="640" fill="#8F899C" font-family="Onest, sans-serif" font-size="18" font-weight="700">dubstepmolitva.ru · @ketasonx</text>
+  <rect x="96" y="660" width="140" height="4" fill="#8B5CF6"/>
+</svg>

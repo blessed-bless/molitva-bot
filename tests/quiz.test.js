@@ -227,3 +227,24 @@ test('/intro preview goes to admin, /intro to channel',async()=>{
     assert.ok(channel);
   }finally{restore()}
 });
+
+test('/post2 preview and publish pricing post',async()=>{
+  const {bot,calls,restore}=mockBot();
+  try{
+    await bot.handle({
+      update_id:14,
+      message:{message_id:8,chat:{id:42,type:'private'},from:{id:42},text:'/post2 preview'},
+    });
+    const preview=calls.find(c=>c.method==='sendPhoto'&&String(c.body.chat_id)==='42'&&/Сколько стоит/.test(c.body.caption||''));
+    assert.ok(preview);
+    const buttons=preview.body.reply_markup.inline_keyboard.flat();
+    assert.equal(buttons.length,2);
+    assert.ok(buttons.every(b=>/Оценить проект|Написать/.test(b.text)));
+
+    await bot.handle({
+      update_id:15,
+      message:{message_id:9,chat:{id:42,type:'private'},from:{id:42},text:'/post2'},
+    });
+    assert.ok(calls.some(c=>c.method==='sendPhoto'&&c.body.chat_id==='@test_channel'&&/Сколько стоит/.test(c.body.caption||'')));
+  }finally{restore()}
+});

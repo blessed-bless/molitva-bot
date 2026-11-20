@@ -10,6 +10,7 @@
   "scripts": {
     "start": "node --env-file-if-exists=.env index.js",
     "test": "node --test tests/*.test.js",
-    "render:intro": "node scripts/render-intro.mjs"
+    "render:intro": "node scripts/render-intro.mjs intro",
+    "render:pricing": "node scripts/render-intro.mjs pricing"
   }
 }

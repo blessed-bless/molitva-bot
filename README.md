@@ -10,6 +10,7 @@ Telegram-бот портфолио: меню со ссылками, квиз «�
 - «Оценить проект» — 4 шага на кнопках (тип задачи, ниша, есть ли сайт/CRM, сроки), вилка цены/срока из `config.js`, кнопка «Отправить заявку» → сообщение админу
 - Deep link `?start=quiz` сразу открывает квиз
 - `/post` только для `ADMIN_ID` — публикует `posts/navigator.md` (HTML) в `CHANNEL_ID` с кнопками-ссылками
+- `/intro preview` — превью первого поста с картинкой админу; `/intro` — в `CHANNEL_ID` (`assets/intro.png` + `posts/intro.md`)
 
 Состояние квиза живёт в памяти процесса (`Map`). БД нет.
 
@@ -37,9 +38,11 @@ npm test
 
 ## Конфиг
 
-- `config.js` — ссылки, шаги квиза, плейсхолдеры цены и срока
+- `config.js` — ссылки, шаги квиза, вилка цены и срока
 - `posts/navigator.md` — текст поста-проводника (`parse_mode: HTML`)
+- `posts/intro.md` — подпись к первому посту
+- `assets/intro-source.jpg` → `assets/intro.png` — обложка (`npm run render:intro`, нужен `sharp`; запасной вариант — `intro.svg`)
 
 ## Стек
 
-Node.js 24 · Telegram Bot API · zero npm dependencies
+Node.js 24 · Telegram Bot API · zero runtime npm dependencies

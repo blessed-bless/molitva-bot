@@ -50,12 +50,22 @@ function mockBot(){
   const calls=[];
   const original=globalThis.fetch;
   globalThis.fetch=async(_url,opts)=>{
-    const body=JSON.parse(opts.body);
     const method=String(_url).split('/').pop();
+    let body=opts.body;
+    if(typeof body==='string')body=JSON.parse(body);
+    else if(body&&typeof body.get==='function'){
+      body={
+        chat_id:body.get('chat_id'),
+        caption:body.get('caption'),
+        parse_mode:body.get('parse_mode'),
+        reply_markup:JSON.parse(body.get('reply_markup')||'{}'),
+        photo:body.get('photo')?'<file>':null,
+      };
+    }
     calls.push({method,body});
     if(method==='getMe')return Response.json({ok:true,result:{id:1,is_bot:true,username:'molitva_test_bot'}});
     if(method==='answerCallbackQuery')return Response.json({ok:true,result:true});
-    if(method==='sendMessage'||method==='editMessageText'){
+    if(method==='sendMessage'||method==='editMessageText'||method==='sendPhoto'){
       return Response.json({ok:true,result:{message_id:body.message_id||10,chat:{id:body.chat_id}}});
     }
     if(method==='setMyCommands')return Response.json({ok:true,result:true});
@@ -184,5 +194,36 @@ test('unknown updates do not throw',async()=>{
       update_id:10,
       message:{message_id:1,chat:{id:1,type:'group'},from:{id:1},text:'hi'},
     }));
+  }finally{restore()}
+});
+
+test('/intro preview goes to admin, /intro to channel',async()=>{
+  const {bot,calls,restore}=mockBot();
+  try{
+    await bot.handle({
+      update_id:11,
+      message:{message_id:5,chat:{id:7,type:'private'},from:{id:7},text:'/intro preview'},
+    });
+    assert.match(calls.at(-1).body.text,/только для админа/);
+
+    await bot.handle({
+      update_id:12,
+      message:{message_id:6,chat:{id:42,type:'private'},from:{id:42},text:'/intro preview'},
+    });
+    const preview=calls.find(c=>c.method==='sendPhoto'&&String(c.body.chat_id)==='42');
+    assert.ok(preview);
+    assert.equal(preview.body.parse_mode,'HTML');
+    assert.match(preview.body.caption,/Привет, я Богдан/);
+    assert.ok(preview.body.photo);
+    const buttons=preview.body.reply_markup.inline_keyboard.flat();
+    assert.ok(buttons.some(b=>/Портфолио/.test(b.text)));
+    assert.ok(buttons.some(b=>/Оценить проект/.test(b.text)&&/start=quiz/.test(b.url)));
+
+    await bot.handle({
+      update_id:13,
+      message:{message_id:7,chat:{id:42,type:'private'},from:{id:42},text:'/intro'},
+    });
+    const channel=calls.find(c=>c.method==='sendPhoto'&&c.body.chat_id==='@test_channel');
+    assert.ok(channel);
   }finally{restore()}
 });

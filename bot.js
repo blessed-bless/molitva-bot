@@ -4,6 +4,7 @@ import {fileURLToPath} from 'node:url';
 import {links,optionLabel,quizSteps,quoteFor} from './config.js';
 
 const ROOT=dirname(fileURLToPath(import.meta.url));
+const CAPTION_LIMIT=1024;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
@@ -20,6 +21,25 @@ export async function telegram(token,method,payload={},attempt=0){
   if(data.error_code===429&&attempt<2&&wait>0&&wait<=10){
     await sleep(wait*1000);
     return telegram(token,method,payload,attempt+1);
+  }
+  throw Object.assign(Error(`Telegram ${method}: ${data.error_code||response.status}`),{
+    code:data.error_code||response.status,
+    description:String(data.description||''),
+  });
+}
+
+async function telegramForm(token,method,form,attempt=0){
+  const response=await fetch(`https://api.telegram.org/bot${token}/${method}`,{
+    method:'POST',
+    body:form,
+    signal:AbortSignal.timeout(60000),
+  });
+  const data=await response.json().catch(()=>({}));
+  if(data.ok)return data.result;
+  const wait=Number(data.parameters?.retry_after);
+  if(data.error_code===429&&attempt<2&&wait>0&&wait<=10){
+    await sleep(wait*1000);
+    return telegramForm(token,method,form,attempt+1);
   }
   throw Object.assign(Error(`Telegram ${method}: ${data.error_code||response.status}`),{
     code:data.error_code||response.status,
@@ -56,6 +76,19 @@ function navigatorKeyboard(botUsername){
     [{text:'Портфолио',url:links.portfolio},{text:'Смена',url:links.smena}],
     [{text:'Оценить проект',url:`https://t.me/${botUsername}?start=quiz`}],
     [{text:'Написать',url:links.write},{text:'GitHub',url:links.github}],
+  ]};
+}
+
+function introKeyboard(botUsername){
+  return {inline_keyboard:[
+    [
+      {text:'🌐 Портфолио',url:links.portfolio},
+      {text:'📅 Смена',url:links.smena},
+    ],
+    [
+      {text:'🧮 Оценить проект',url:`https://t.me/${botUsername}?start=quiz`},
+      {text:'💬 Написать',url:links.write},
+    ],
   ]};
 }
 
@@ -97,6 +130,18 @@ function leadText(user,answers){
 
 function loadNavigator(){
   return readFileSync(join(ROOT,'posts','navigator.md'),'utf8').trim();
+}
+
+function loadIntroCaption(){
+  const caption=readFileSync(join(ROOT,'posts','intro.md'),'utf8').trim();
+  if(caption.length>CAPTION_LIMIT){
+    throw Object.assign(Error(`intro caption ${caption.length} > ${CAPTION_LIMIT}`),{code:'CAPTION_TOO_LONG'});
+  }
+  return caption;
+}
+
+function loadIntroPhoto(){
+  return readFileSync(join(ROOT,'assets','intro.png'));
 }
 
 export function createBot({token,adminId,channelId}){
@@ -182,20 +227,47 @@ export function createBot({token,adminId,channelId}){
     );
   }
 
+  async function ensureUsername(){
+    if(botUsername)return botUsername;
+    const me=await api('getMe');
+    botUsername=me.username;
+    return botUsername;
+  }
+
   async function publishNavigator(chatId){
-    if(!botUsername){
-      const me=await api('getMe');
-      botUsername=me.username;
-    }
+    const username=await ensureUsername();
     const text=loadNavigator();
     await api('sendMessage',{
       chat_id:channelId,
       text,
       parse_mode:'HTML',
       link_preview_options:{is_disabled:true},
-      reply_markup:navigatorKeyboard(botUsername),
+      reply_markup:navigatorKeyboard(username),
     });
     await send(chatId,'Пост ушёл в канал.',{inline_keyboard:[]});
+  }
+
+  async function sendIntroPhoto(targetChatId){
+    const username=await ensureUsername();
+    const caption=loadIntroCaption();
+    const photo=loadIntroPhoto();
+    const form=new FormData();
+    form.append('chat_id',String(targetChatId));
+    form.append('caption',caption);
+    form.append('parse_mode','HTML');
+    form.append('reply_markup',JSON.stringify(introKeyboard(username)));
+    form.append('photo',new Blob([photo],{type:'image/png'}),'intro.png');
+    return telegramForm(token,'sendPhoto',form);
+  }
+
+  async function publishIntro(chatId,preview){
+    const target=preview?adminId:channelId;
+    await sendIntroPhoto(target);
+    if(preview){
+      await send(chatId,'Превью intro ушло тебе в личку. В канал — /intro без аргументов.',{inline_keyboard:[]});
+      return;
+    }
+    await send(chatId,'Intro ушёл в канал.',{inline_keyboard:[]});
   }
 
   async function handle(update){
@@ -253,6 +325,20 @@ export function createBot({token,adminId,channelId}){
       await publishNavigator(incoming.chat.id);
       return;
     }
+
+    if(cmd==='/intro'){
+      if(user.id!==adminId){
+        await send(incoming.chat.id,'Эта команда только для админа.',{inline_keyboard:[]});
+        return;
+      }
+      const preview=payload.toLowerCase()==='preview';
+      if(payload&&!preview){
+        await send(incoming.chat.id,'Использование: /intro preview или /intro',{inline_keyboard:[]});
+        return;
+      }
+      await publishIntro(incoming.chat.id,preview);
+      return;
+    }
   }
 
   async function configure(){
@@ -261,6 +347,7 @@ export function createBot({token,adminId,channelId}){
     await api('setMyCommands',{commands:[
       {command:'start',description:'Меню и оценка проекта'},
       {command:'post',description:'Пост-проводник в канал (админ)'},
+      {command:'intro',description:'Первый пост с картинкой (админ)'},
     ]});
     return me;
   }

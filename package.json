@@ -1,0 +1,14 @@
+{
+  "name": "molitva-bot",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env index.js",
+    "test": "node --test tests/*.test.js"
+  }
+}

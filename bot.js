@@ -154,6 +154,7 @@ function loadPhoto(name){
 
 export function createBot({token,adminId,channelId,dryChannel=''}){
   const sessions=new Map();
+  const pendingPostNow=new Map();
   let botUsername='';
   let stopped=false;
   let pollError='';
@@ -300,6 +301,11 @@ export function createBot({token,adminId,channelId,dryChannel=''}){
       if(!chatId||incoming.chat.type!=='private')return;
       const ctx={userId:user.id,chatId,messageId:incoming.message_id};
 
+      if(data==='postnow:go'||data==='postnow:cancel'){
+        if(user.id!==adminId)return;
+        await handlePostNowCallback(data,ctx);
+        return;
+      }
       if(data==='quiz:start'){
         const started=beginQuiz(user.id);
         await editOrSend(chatId,incoming.message_id,started.text,started.keyboard);
@@ -372,13 +378,58 @@ export function createBot({token,adminId,channelId,dryChannel=''}){
       return;
     }
 
-    if(cmd==='/schedule'||cmd==='/queue'||cmd==='/unschedule'||cmd==='/preview'){
+    if(cmd==='/schedule'||cmd==='/queue'||cmd==='/unschedule'||cmd==='/preview'||cmd==='/postnow'){
       if(user.id!==adminId){
         await send(incoming.chat.id,'Эта команда только для админа.',{inline_keyboard:[]});
         return;
       }
       await handleScheduleCmd(cmd,payload,incoming.chat.id);
       return;
+    }
+  }
+
+  function postNowKeyboard(){
+    return {inline_keyboard:[[
+      {text:'Опубликовать',callback_data:'postnow:go'},
+      {text:'Отмена',callback_data:'postnow:cancel'},
+    ]]};
+  }
+
+  async function handlePostNowCallback(data,ctx){
+    const pending=pendingPostNow.get(ctx.userId);
+    if(data==='postnow:cancel'){
+      pendingPostNow.delete(ctx.userId);
+      await editOrSend(ctx.chatId,ctx.messageId,pending
+        ?`Отменил публикацию <code>${esc(pending.file)}</code>.`
+        :'Нечего отменять — запроса на публикацию нет.',
+      {inline_keyboard:[]});
+      return;
+    }
+    if(!pending){
+      await editOrSend(ctx.chatId,ctx.messageId,'Запрос устарел. Снова: /postnow файл.md',{inline_keyboard:[]});
+      return;
+    }
+    pendingPostNow.delete(ctx.userId);
+    const file=pending.file;
+    try{
+      const post=await scheduler.loadPost(file);
+      const result=await scheduler.publishPost(post,channelId);
+      scheduler.markPosted(file,{
+        message_id:result.message_id,
+        mode:result.mode,
+        target:channelId,
+        atMs:post.atMs,
+        previewLine:post.previewLine,
+      });
+      await editOrSend(
+        ctx.chatId,
+        ctx.messageId,
+        `Опубликовал <code>${esc(file)}</code> → ${esc(String(channelId))} (${result.mode}, msg ${result.message_id}).\nВ расписании помечен как posted.`,
+        {inline_keyboard:[]},
+      );
+    }catch(e){
+      const detail=e?.description||e?.message||String(e);
+      await editOrSend(ctx.chatId,ctx.messageId,`Не опубликовал ${esc(file)}: ${esc(detail)}`,{inline_keyboard:[]});
     }
   }
 
@@ -448,6 +499,39 @@ export function createBot({token,adminId,channelId,dryChannel=''}){
         const detail=e?.description||e?.message||String(e);
         await send(chatId,`Превью не вышло: ${esc(detail)}`,{inline_keyboard:[]});
       }
+      return;
+    }
+
+    if(cmd==='/postnow'){
+      const file=basename(String(payload||'').trim());
+      if(!file||!file.endsWith('.md')){
+        await send(chatId,'Использование: /postnow 03-gran.md',{inline_keyboard:[]});
+        return;
+      }
+      try{
+        const post=await scheduler.loadPost(file);
+        const entry=scheduler.queueEntry(file);
+        const notes=[];
+        if(post.imageMissing)notes.push(`нет файла ${post.imageMissing} — уйдёт текстом`);
+        if(post.captionTooLong)notes.push(`текст ${post.body.length} > ${scheduler.CAPTION_LIMIT} — без фото`);
+        if(entry?.posted)notes.push('в очереди уже posted — канал получит ещё раз');
+        const mode=post.imagePath&&!post.captionTooLong?'photo':'text';
+        pendingPostNow.set(adminId,{file,at:Date.now()});
+        const lines=[
+          '<b>Опубликовать сейчас?</b>',
+          `<code>${esc(file)}</code>`,
+          esc(post.previewLine),
+          `Время в файле: ${esc(post.atRaw)}`,
+          `Кнопки: ${post.buttons.length}`,
+          `Режим: ${mode}`,
+          `Куда: ${esc(String(channelId))} (не DRY)`,
+        ];
+        if(notes.length)lines.push('',...notes.map(n=>`⚠ ${esc(n)}`));
+        await send(chatId,lines.join('\n'),postNowKeyboard());
+      }catch(e){
+        const detail=e?.description||e?.message||String(e);
+        await send(chatId,`Не подготовил: ${esc(detail)}`,{inline_keyboard:[]});
+      }
     }
   }
 
@@ -463,6 +547,7 @@ export function createBot({token,adminId,channelId,dryChannel=''}){
       {command:'queue',description:'Показать очередь (админ)'},
       {command:'unschedule',description:'Снять пост с очереди (админ)'},
       {command:'preview',description:'Превью поста из файла (админ)'},
+      {command:'postnow',description:'Сразу в канал с подтверждением (админ)'},
     ]});
     return me;
   }

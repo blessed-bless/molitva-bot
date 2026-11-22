@@ -280,6 +280,45 @@ export function createScheduler({
     return before!==queue.items.length;
   }
 
+  /** Mark file posted so the timer will not publish it again. */
+  function markPosted(fileName,{message_id=null,mode=null,target=null,atMs=null,previewLine=''}={}){
+    const base=basename(String(fileName||''));
+    if(!base)throw Object.assign(Error('Bad file'),{code:'BAD_FILE'});
+    const queue=loadQueue();
+    let item=queue.items.find(i=>i.file===base);
+    if(!item){
+      const at=atMs??Date.now();
+      item={
+        file:base,
+        at,
+        atLabel:formatOmsk(at),
+        previewLine,
+        captionTooLong:false,
+        posted:false,
+        message_id:null,
+        skipped:false,
+        skipReason:null,
+      };
+      queue.items.push(item);
+    }
+    item.posted=true;
+    item.skipped=false;
+    item.skipReason=null;
+    item.message_id=message_id;
+    item.postedAt=Date.now();
+    item.mode=mode;
+    item.target=target==null?null:String(target);
+    if(previewLine)item.previewLine=previewLine;
+    queue.items.sort((a,b)=>a.at-b.at);
+    saveQueue(queue);
+    return item;
+  }
+
+  function queueEntry(fileName){
+    const base=basename(String(fileName||''));
+    return loadQueue().items.find(i=>i.file===base)||null;
+  }
+
   async function publishDue(now=Date.now()){
     const queue=loadQueue();
     const target=publishTarget();
@@ -340,10 +379,13 @@ export function createScheduler({
     scheduleAll,
     pendingItems,
     unschedule,
+    markPosted,
+    queueEntry,
     publishDue,
     loadPost:withBotUser,
     publishPost:(post,chatId)=>publishPost(api,telegramForm,token,{post,chatId}),
     publishTarget,
+    channelId,
     formatOmsk,
     CAPTION_LIMIT,
     start,

@@ -1,7 +1,8 @@
 import {readFileSync} from 'node:fs';
-import {dirname,join} from 'node:path';
+import {basename,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {links,optionLabel,quizSteps,quoteFor} from './config.js';
+import {createScheduler} from './schedule.js';
 
 const ROOT=dirname(fileURLToPath(import.meta.url));
 const CAPTION_LIMIT=1024;
@@ -151,7 +152,7 @@ function loadPhoto(name){
   return readFileSync(join(ROOT,'assets',`${name}.png`));
 }
 
-export function createBot({token,adminId,channelId}){
+export function createBot({token,adminId,channelId,dryChannel=''}){
   const sessions=new Map();
   let botUsername='';
   let stopped=false;
@@ -167,6 +168,18 @@ export function createBot({token,adminId,channelId}){
     reply_markup:keyboard,
   });
   const send=(chatId,text,keyboard)=>api('sendMessage',msg(chatId,text,keyboard));
+  const notifyAdmin=text=>send(adminId,text,{inline_keyboard:[]});
+
+  const scheduler=createScheduler({
+    token,
+    adminId,
+    channelId,
+    dryChannel,
+    api,
+    telegramForm,
+    ensureUsername:()=>ensureUsername(),
+    notifyAdmin,
+  });
 
   async function editOrSend(chatId,messageId,text,keyboard){
     if(messageId){
@@ -358,6 +371,84 @@ export function createBot({token,adminId,channelId}){
       });
       return;
     }
+
+    if(cmd==='/schedule'||cmd==='/queue'||cmd==='/unschedule'||cmd==='/preview'){
+      if(user.id!==adminId){
+        await send(incoming.chat.id,'Эта команда только для админа.',{inline_keyboard:[]});
+        return;
+      }
+      await handleScheduleCmd(cmd,payload,incoming.chat.id);
+      return;
+    }
+  }
+
+  async function handleScheduleCmd(cmd,payload,chatId){
+    if(cmd==='/schedule'){
+      const {added,warnings,queue}=await scheduler.scheduleAll();
+      const pending=scheduler.pendingItems(queue);
+      const lines=[
+        `<b>Очередь обновлена</b>`,
+        `В очереди: ${pending.length}`,
+        dryChannel?`DRY → ${esc(String(dryChannel))}`:`Цель: ${esc(String(channelId))}`,
+      ];
+      if(added.length){
+        lines.push('',...added.map(p=>`• ${esc(p.file)} — ${esc(p.atRaw)}`));
+      }else{
+        lines.push('','Новых будущих постов нет.');
+      }
+      if(warnings.length){
+        lines.push('', '<b>Предупреждения</b>', ...warnings.map(w=>`• ${esc(w)}`));
+      }
+      await send(chatId,lines.join('\n'),{inline_keyboard:[]});
+      return;
+    }
+
+    if(cmd==='/queue'){
+      const pending=scheduler.pendingItems();
+      if(!pending.length){
+        await send(chatId,'Очередь пуста. /schedule — собрать из posts/*.md',{inline_keyboard:[]});
+        return;
+      }
+      const lines=[
+        `<b>Очередь (${pending.length})</b>`,
+        dryChannel?`DRY → ${esc(String(dryChannel))}`:'',
+        '',
+        ...pending.map(i=>`• <code>${esc(i.file)}</code>\n  ${esc(i.atLabel||scheduler.formatOmsk(i.at))}\n  ${esc(i.previewLine||'')}`),
+      ].filter(Boolean);
+      await send(chatId,lines.join('\n'),{inline_keyboard:[]});
+      return;
+    }
+
+    if(cmd==='/unschedule'){
+      const file=basename(String(payload||'').trim());
+      if(!file){
+        await send(chatId,'Использование: /unschedule 03-gran.md',{inline_keyboard:[]});
+        return;
+      }
+      const ok=scheduler.unschedule(file);
+      await send(chatId,ok?`Снял с очереди: ${file}`:`В очереди нет незапощенного ${file}`,{inline_keyboard:[]});
+      return;
+    }
+
+    if(cmd==='/preview'){
+      const file=basename(String(payload||'').trim());
+      if(!file){
+        await send(chatId,'Использование: /preview 03-gran.md',{inline_keyboard:[]});
+        return;
+      }
+      try{
+        const post=await scheduler.loadPost(file);
+        const notes=[];
+        if(post.imageMissing)notes.push(`нет файла ${post.imageMissing} — текстом`);
+        if(post.captionTooLong)notes.push(`текст ${post.body.length} > ${scheduler.CAPTION_LIMIT} — без фото`);
+        const result=await scheduler.publishPost(post,adminId);
+        const extra=notes.length?` (${notes.join('; ')})`:'';
+        await send(chatId,`Превью ${file} → тебе (${result.mode})${extra}`,{inline_keyboard:[]});
+      }catch(e){
+        const detail=e?.description||e?.message||String(e);
+        await send(chatId,`Превью не вышло: ${esc(detail)}`,{inline_keyboard:[]});
+      }
+    }
   }
 
   async function configure(){
@@ -368,6 +459,10 @@ export function createBot({token,adminId,channelId}){
       {command:'post',description:'Пост-проводник в канал (админ)'},
       {command:'intro',description:'Первый пост с картинкой (админ)'},
       {command:'post2',description:'Пост про цены (админ)'},
+      {command:'schedule',description:'Собрать очередь из posts/*.md (админ)'},
+      {command:'queue',description:'Показать очередь (админ)'},
+      {command:'unschedule',description:'Снять пост с очереди (админ)'},
+      {command:'preview',description:'Превью поста из файла (админ)'},
     ]});
     return me;
   }
@@ -411,12 +506,16 @@ export function createBot({token,adminId,channelId}){
     sessions,
     handle,
     beginQuiz,
+    scheduler,
     async start(){
       const me=await configure();
+      scheduler.start();
+      const dry=String(dryChannel||'').trim();
       console.log(`Bot @${me.username} online`);
+      if(dry)console.log(`Schedule DRY → ${dry}`);
       poll();
       return me;
     },
-    stop(){stopped=true;abort.abort()},
+    stop(){stopped=true;scheduler.stop();abort.abort()},
   };
 }

@@ -3,6 +3,7 @@ import {createBot} from './bot.js';
 const token=String(process.env.BOT_TOKEN||'').trim();
 const adminId=Number(process.env.ADMIN_ID);
 const channelId=String(process.env.CHANNEL_ID||'').trim();
+const dryChannel=String(process.env.DRY_CHANNEL||'').trim();
 
 if(!token||!token.includes(':')){
   console.error('Задай BOT_TOKEN в .env');
@@ -17,7 +18,7 @@ if(!channelId){
   process.exit(1);
 }
 
-const bot=createBot({token,adminId,channelId});
+const bot=createBot({token,adminId,channelId,dryChannel});
 
 process.on('SIGINT',()=>{bot.stop();process.exit(0)});
 process.on('SIGTERM',()=>{bot.stop();process.exit(0)});
